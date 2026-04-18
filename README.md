@@ -26,6 +26,7 @@ No root required. Installs to `~/.local/bin` (XDG standard).
 | `-Rns <pkg>`| Remove completely (purge configs)      |
 | `-Qet`     | List installed packages                 |
 | `-Qs <q>`  | Search installed packages               |
+| `-Syu`     | Check & install updates for all installed packages|
 
 Examples:
 ```bash
@@ -44,6 +45,10 @@ Runs on every execution. Compares local `VERSION` with the remote file. If outda
 4. Sets `_CH_UPDATED=1` to prevent recursive checks
 
 Safe for active sessions. No state loss. Works across Linux, macOS, BSD, and WSL.
+
+### Updating installed packages
+
+It's simple: use `chistore -Syu`. If necessary, specify the name of the packages to exclude updates (in order not to update) or `n` to cancel the update. Press Enter to install
 
 ## Uninstall
 
