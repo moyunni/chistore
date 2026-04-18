@@ -10,7 +10,7 @@ CHISTORE_URL="${BASE_URL}/chistore"
 CHISTORE_VER_URL="${BASE_URL}/VERSION"
 INDEX_URL="${BASE_URL}/INDEX"
 
-LOCAL_VER="1.4.0"
+LOCAL_VER="1.4.1"
 XDG_DATA_HOME="${XDG_DATA_HOME:-$HOME/.local/share}"
 XDG_BIN_HOME="${XDG_BIN_HOME:-$HOME/.local/bin}"
 STATE_DIR="$XDG_DATA_HOME/chistore"
@@ -89,10 +89,7 @@ install_deps() {
 
     for token in $deps_str; do
         local type="sys" pkgs="$token"
-        if [[ "$token" == *":"* ]]; then
-            type="${token%%:*}"
-            pkgs="${token#*:}"
-        fi
+        if [[ "$token" == *":"* ]]; then type="${token%%:*}"; pkgs="${token#*:}"; fi
         IFS=',' read -ra pkg_list <<< "$pkgs"
         for pkg in "${pkg_list[@]}"; do
             [[ -z "$pkg" ]] && continue
@@ -111,9 +108,7 @@ install_deps() {
         else to_install+=("$pkg"); fi
     done
 
-    if [ ${#to_install[@]} -eq 0 ] && [ ${#pip_deps[@]} -eq 0 ] && [ ${#npm_deps[@]} -eq 0 ]; then
-        return 0
-    fi
+    if [ ${#to_install[@]} -eq 0 ] && [ ${#pip_deps[@]} -eq 0 ] && [ ${#npm_deps[@]} -eq 0 ]; then return 0; fi
 
     echo -e "\n${B}📦 Required Dependencies:${R}"
     [ ${#to_install[@]} -gt 0 ] && echo -e "  ${C}System:${R} ${to_install[*]}"
@@ -124,8 +119,7 @@ install_deps() {
     confirm "Install dependencies?" || return 1
 
     if [ ${#to_install[@]} -gt 0 ]; then
-        local pm
-        pm=$(get_pkg_manager)
+        local pm; pm=$(get_pkg_manager)
         [ -z "$pm" ] && { err "No package manager found."; return 1; }
         info "Installing system packages..."
         sudo $pm "${to_install[@]}" || { err "System deps failed"; return 1; }
@@ -146,11 +140,15 @@ install_deps() {
 
 fetch_binary() {
     local pkg="$1" main="$2" dest="$3"
-    local url="$BASE_URL/$pkg/$main"
-    if curl -fsSL "$url" -o "$dest" 2>/dev/null; then return 0; fi
-    if [[ "$main" != *.py ]]; then
-        if curl -fsSL "${url}.py" -o "$dest" 2>/dev/null; then return 0; fi
-    fi
+    local -a urls=("$BASE_URL/$pkg/$main")
+    [[ "$main" != *.py ]] && urls+=("$BASE_URL/$pkg/${main}.py")
+
+    for url in "${urls[@]}"; do
+        if curl -fsSL "$url" -o "$dest"; then return 0; fi
+    done
+
+    echo -e "\n${Y}⚠️  Failed URLs:${R}"
+    for url in "${urls[@]}"; do echo "  ${C}•${R} $url"; done
     return 1
 }
 
@@ -219,9 +217,7 @@ cmd_install() {
     echo -e "  Version: ${v}\n  Size: ${s}\n  Description: ${d}\n"
     confirm "Install ${B}${pkg}${R}?" || { info "Cancelled"; return 0; }
 
-    if [ -n "$deps" ]; then
-        install_deps "$deps" || { err "Dependency installation aborted."; exit 1; }
-    fi
+    if [ -n "$deps" ]; then install_deps "$deps" || { err "Dependency installation aborted."; exit 1; }; fi
 
     local bin_path="$INSTALL_DIR/$pkg"
     local conf_dir="$HOME/.config/$pkg"
@@ -234,7 +230,7 @@ cmd_install() {
     elif [ "$t" = "python" ]; then
         setup_python_venv
         local tmp_file="$data_dir/.tmp_download"
-        fetch_binary "$pkg" "$m" "$tmp_file" || { err "Download failed (tried $m and ${m}.py)"; exit 1; }
+        fetch_binary "$pkg" "$m" "$tmp_file" || { err "Download failed"; exit 1; }
         mv -f "$tmp_file" "$data_dir/$m"
         chmod +x "$data_dir/$m"
         create_python_wrapper "$bin_path" "$data_dir" "$m"
