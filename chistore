@@ -1,0 +1,187 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+REPO_USER="moyunni"
+REPO_NAME="chistore"
+BRANCH="main"
+BASE_URL="https://codeberg.org/${REPO_USER}/${REPO_NAME}/raw/branch/${BRANCH}"
+
+CHISTORE_URL="${BASE_URL}/chistore"
+CHISTORE_VER_URL="${BASE_URL}/VERSION"
+INDEX_URL="${BASE_URL}/INDEX"
+
+LOCAL_VER="1.1.0"
+XDG_DATA_HOME="${XDG_DATA_HOME:-$HOME/.local/share}"
+XDG_BIN_HOME="${XDG_BIN_HOME:-$HOME/.local/bin}"
+STATE_DIR="$XDG_DATA_HOME/chistore"
+MANIFEST="$STATE_DIR/manifest"
+INSTALL_DIR="$XDG_BIN_HOME"
+
+mkdir -p "$STATE_DIR" "$INSTALL_DIR"
+
+R="\033[0m" G="\033[92m" Y="\033[93m" C="\033[96m" B="\033[1m"
+ok() { printf "${G}[+]${R} %s\n" "$1"; }
+warn() { printf "${Y}[!]${R} %s\n" "$1" >&2; }
+err() { printf "${R}[x]${R} %s\n" "$1" >&2; }
+info() { printf "${C}[i]${R} %s\n" "$1"; }
+
+confirm() {
+    printf "${B}%s${R} [y/N] " "$1"
+    read -r ans
+    [[ "${ans,,}" =~ ^y(es)?$ ]]
+}
+
+parse_field() {
+    local val
+    val=$(grep -i "^[#[:space:]]*$1[[:space:]]*:" "$2" | head -1 | sed "s/^[^:]*:[[:space:]]*//" | xargs)
+    echo "${val:-}"
+}
+
+self_update() {
+    [ "${_CH_UPDATED:-0}" = "1" ] && return 0
+    local remote_ver
+    remote_ver=$(curl -fsSL --connect-timeout 5 --max-time 10 "$CHISTORE_VER_URL" 2>/dev/null || echo "err")
+    [ "$remote_ver" = "$LOCAL_VER" ] && return 0
+    [ "$remote_ver" = "err" ] && return 0
+    info "Update: $LOCAL_VER -> $remote_ver"
+    confirm "Update chistore?" || return 0
+    local tmp
+    tmp=$(mktemp)
+    curl -fsSL --connect-timeout 5 --max-time 15 "$CHISTORE_URL" -o "$tmp" || { rm -f "$tmp"; err "Download failed"; return 1; }
+    chmod +x "$tmp"
+    mv -f "$tmp" "$0"
+    export _CH_UPDATED=1
+    exec "$0" "$@"
+}
+
+cmd_help() {
+    cat <<EOF
+${B}chistore${R} - CLI tool manager
+
+${B}Usage:${R}
+  chistore -h        Show help
+  chistore -Ss <q>   Search repository
+  chistore -S <pkg>  Install package
+  chistore -Rn <pkg> Remove (keep configs)
+  chistore -Rns <pkg> Remove fully (purge)
+  chistore -Qet      List installed
+  chistore -Qs <q>   Search installed
+EOF
+}
+
+cmd_search() {
+    local q="${1:-}"
+    info "Searching repository: ${B}$q${R}"
+    local idx
+    idx=$(curl -fsSL --connect-timeout 5 "$INDEX_URL") || { err "Cannot fetch INDEX"; exit 1; }
+    local found=0
+    while IFS= read -r line; do
+        [[ -z "$line" || "$line" =~ ^# ]] && continue
+        [[ "${line,,}" == *"${q,,}"* ]] || continue
+        local md n d v s t m
+        md=$(curl -fsSL "$BASE_URL/$line/info.md" 2>/dev/null) || continue
+        n=$(parse_field "Название" <(echo "$md")); d=$(parse_field "Описание" <(echo "$md"))
+        v=$(parse_field "Версия" <(echo "$md")); s=$(parse_field "Размер" <(echo "$md"))
+        t=$(parse_field "Type" <(echo "$md")); m=$(parse_field "MainFile" <(echo "$md"))
+        n=${n:-$line}; d=${d:-No description}; v=${v:-?}; s=${s:-?}
+        echo -e "${G}${n}${R} v${v} | ${s} [${t:-single}]"
+        echo -e "  ${d}\n"
+        ((found++))
+    done <<< "$idx"
+    [ "$found" -eq 0 ] && warn "No packages found."
+}
+
+cmd_install() {
+    local pkg="$1"
+    local idx
+    idx=$(curl -fsSL --connect-timeout 5 "$INDEX_URL") || { err "Index unavailable"; exit 1; }
+    grep -qx "$pkg" <<< "$idx" || { err "Package not in repository"; exit 1; }
+    local md n d v s t m
+    md=$(curl -fsSL "$BASE_URL/$pkg/info.md") || { err "Cannot fetch info.md"; exit 1; }
+    n=$(parse_field "Название" <(echo "$md")); d=$(parse_field "Описание" <(echo "$md"))
+    v=$(parse_field "Версия" <(echo "$md")); s=$(parse_field "Размер" <(echo "$md"))
+    t=$(parse_field "Type" <(echo "$md")); m=$(parse_field "MainFile" <(echo "$md"))
+    n=${n:-$pkg}; d=${d:-No description}; v=${v:-?}; s=${s:-?}
+    t=${t:-single}; m=${m:-$pkg}
+
+    echo -e "\n${B}📦 Install: ${n}${R}"
+    echo -e "  Version: ${v}\n  Size: ${s}\n  Description: ${d}\n"
+    confirm "Install ${B}${pkg}${R}?" || { info "Cancelled"; return 0; }
+
+    if [ "$t" = "archive" ]; then
+        local share_dir="$HOME/.local/share/$pkg"
+        mkdir -p "$share_dir"
+        curl -fsSL "$BASE_URL/$pkg/${pkg}.tar.gz" | tar -xzf - -C "$share_dir" || { err "Extract failed"; exit 1; }
+        ln -sf "$share_dir/$m" "$INSTALL_DIR/$pkg"
+    else
+        curl -fsSL "$BASE_URL/$pkg/$m" -o "$INSTALL_DIR/$pkg" || { err "Download failed"; exit 1; }
+        chmod +x "$INSTALL_DIR/$pkg"
+    fi
+
+    local conf_dir="$HOME/.config/$pkg"
+    mkdir -p "$conf_dir"
+    if ! grep -qx "$pkg" "$MANIFEST" 2>/dev/null; then
+        echo "${pkg}|${v}|$INSTALL_DIR/$pkg|$conf_dir|$(date +%F)" >> "$MANIFEST"
+    fi
+    ok "${pkg} installed"
+    [[ ":$PATH:" != *":$INSTALL_DIR:"* ]] && warn "Add $INSTALL_DIR to PATH"
+}
+
+cmd_remove() {
+    local pkg="$1" purge="${2:-0}"
+    if ! grep -q "^${pkg}|" "$MANIFEST" 2>/dev/null; then
+        err "Not installed"
+        exit 1
+    fi
+    local line bin cfg ver
+    line=$(grep "^${pkg}|" "$MANIFEST")
+    IFS='|' read -r _ ver bin cfg _ <<< "$line"
+    echo -e "\n${B}🗑️  Remove: ${pkg}${R}"
+    echo -e "  Version: ${ver}\n  Binary: ${bin}"
+    [ "$purge" = "1" ] && warn "Will purge: ${cfg}"
+    confirm "${purge:+Fully }remove ${B}${pkg}${R}?" || { info "Cancelled"; return 0; }
+    rm -f "$bin"
+    ok "Binary removed."
+    if [ "$purge" = "1" ] && [ -d "$cfg" ]; then
+        rm -rf "$cfg"
+        ok "Config purged."
+    fi
+    grep -v "^${pkg}|" "$MANIFEST" > "${MANIFEST}.tmp" && mv -f "${MANIFEST}.tmp" "$MANIFEST"
+    ok "${pkg} removed."
+}
+
+cmd_list() {
+    [ ! -s "$MANIFEST" ] && { info "No installed tools."; return 0; }
+    echo -e "${B}📋 Installed:${R}"
+    while IFS='|' read -r pkg ver bin cfg date; do
+        echo -e "  ${G}${pkg}${R} v${ver} | Installed: ${date}"
+    done < "$MANIFEST"
+}
+
+cmd_qsearch() {
+    local q="${1:-}"
+    [ ! -s "$MANIFEST" ] && { warn "None installed."; return 0; }
+    local found
+    found=$(grep -i "$q" "$MANIFEST" 2>/dev/null) || { warn "No installed packages match."; return 0; }
+    echo -e "${B}🔍 Installed (match: ${q}):${R}"
+    while IFS='|' read -r pkg ver bin cfg date; do
+        echo -e "  ${G}${pkg}${R} v${ver}"
+    done <<< "$found"
+}
+
+main() {
+    self_update
+    [ $# -lt 1 ] && { cmd_help; exit 0; }
+    case "$1" in
+        -h|--help) cmd_help ;;
+        -Ss) cmd_search "${2:-}" ;;
+        -S) [ -z "${2:-}" ] && err "Package required" || cmd_install "$2" ;;
+        -Rn) [ -z "${2:-}" ] && err "Package required" || cmd_remove "$2" 0 ;;
+        -Rns) [ -z "${2:-}" ] && err "Package required" || cmd_remove "$2" 1 ;;
+        -Qet) cmd_list ;;
+        -Qs) cmd_qsearch "${2:-}" ;;
+        *) err "Unknown: $1"; cmd_help; exit 1 ;;
+    esac
+}
+
+main "$@"
