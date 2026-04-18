@@ -10,7 +10,7 @@ CHISTORE_URL="${BASE_URL}/chistore"
 CHISTORE_VER_URL="${BASE_URL}/VERSION"
 INDEX_URL="${BASE_URL}/INDEX"
 
-LOCAL_VER="1.2.0"
+LOCAL_VER="1.3.0"
 XDG_DATA_HOME="${XDG_DATA_HOME:-$HOME/.local/share}"
 XDG_BIN_HOME="${XDG_BIN_HOME:-$HOME/.local/bin}"
 STATE_DIR="$XDG_DATA_HOME/chistore"
@@ -63,12 +63,69 @@ ${B}Usage:${R}
   chistore -h        Show help
   chistore -Ss <q>   Search repository
   chistore -S <pkg>  Install package
-  chistore -Syu      Check & install updates for all installed packages
-  chistore -Rn <pkg> Remove (keep configs)
-  chistore -Rns <pkg> Remove fully (purge)
+  chistore -Syu      System upgrade (check & update installed)
+  chistore -Rn <pkg> Remove (keep configs & data)
+  chistore -Rns <pkg> Remove fully (purge configs & data)
   chistore -Qet      List installed
   chistore -Qs <q>   Search installed
 EOF
+}
+
+get_pkg_manager() {
+    if command -v pacman &>/dev/null; then echo "pacman -S --noconfirm"
+    elif command -v apt &>/dev/null; then echo "apt install -y"
+    elif command -v dnf &>/dev/null; then echo "dnf install -y"
+    elif command -v apk &>/dev/null; then echo "apk add"
+    elif command -v brew &>/dev/null; then echo "brew install"
+    else echo ""; fi
+}
+
+install_deps() {
+    local deps_str="$1"
+    local -a sys_deps=() pip_deps=() npm_deps=()
+    IFS=' ' read -ra items <<< "$deps_str"
+    for item in "${items[@]}"; do
+        case "$item" in
+            sys:*) sys_deps+=("${item#sys:}") ;;
+            pip:*) pip_deps+=("${item#pip:}") ;;
+            npm:*) npm_deps+=("${item#npm:}") ;;
+            *) sys_deps+=("$item") ;;
+        esac
+    done
+
+    if [ ${#sys_deps[@]} -eq 0 ] && [ ${#pip_deps[@]} -eq 0 ] && [ ${#npm_deps[@]} -eq 0 ]; then
+        return 0
+    fi
+
+    echo -e "\n${B}📦 Required Dependencies:${R}"
+    [ ${#sys_deps[@]} -gt 0 ] && echo -e "  ${C}System:${R} ${sys_deps[*]}"
+    [ ${#pip_deps[@]} -gt 0 ] && echo -e "  ${C}Python:${R} ${pip_deps[*]}"
+    [ ${#npm_deps[@]} -gt 0 ] && echo -e "  ${C}Node:${R} ${npm_deps[*]}"
+    echo ""
+
+    confirm "Install dependencies?" || return 1
+
+    local pm
+    pm=$(get_pkg_manager)
+    if [ ${#sys_deps[@]} -gt 0 ]; then
+        [ -z "$pm" ] && { err "System package manager not found. Install manually."; return 1; }
+        local cmd="sudo $pm ${sys_deps[*]}"
+        info "Running: $cmd"
+        eval "$cmd" || { err "Failed to install system deps"; return 1; }
+    fi
+
+    if [ ${#pip_deps[@]} -gt 0 ]; then
+        info "Installing Python packages..."
+        pip3 install --user --break-system-packages "${pip_deps[@]}" 2>/dev/null || \
+        pip3 install --user "${pip_deps[@]}" 2>/dev/null || { err "pip install failed"; return 1; }
+    fi
+
+    if [ ${#npm_deps[@]} -gt 0 ]; then
+        info "Installing Node packages..."
+        npm install -g "${npm_deps[@]}" || { err "npm install failed"; return 1; }
+    fi
+
+    ok "Dependencies installed."
 }
 
 cmd_search() {
@@ -98,60 +155,63 @@ cmd_install() {
     local idx
     idx=$(curl -fsSL --connect-timeout 5 "$INDEX_URL") || { err "Index unavailable"; exit 1; }
     grep -qx "$pkg" <<< "$idx" || { err "Package not in repository"; exit 1; }
-    local md n d v s t m
+    local md n d v s t m deps
     md=$(curl -fsSL "$BASE_URL/$pkg/info.md") || { err "Cannot fetch info.md"; exit 1; }
     n=$(parse_field_md "Name" "$md"); d=$(parse_field_md "Description" "$md")
     v=$(parse_field_md "Version" "$md"); s=$(parse_field_md "Size" "$md")
     t=$(parse_field_md "Type" "$md"); m=$(parse_field_md "MainFile" "$md")
+    deps=$(parse_field_md "Dependencies" "$md")
     n=${n:-$pkg}; d=${d:-No description}; v=${v:-?}; s=${s:-?}
-    t=${t:-single}; m=${m:-$pkg}
+    t=${t:-single}; m=${m:-$pkg}; deps=${deps:-}
 
     echo -e "\n${B}📦 Install: ${n}${R}"
     echo -e "  Version: ${v}\n  Size: ${s}\n  Description: ${d}\n"
     confirm "Install ${B}${pkg}${R}?" || { info "Cancelled"; return 0; }
 
-    if [ "$t" = "archive" ]; then
-        local share_dir="$HOME/.local/share/$pkg"
-        mkdir -p "$share_dir"
-        curl -fsSL "$BASE_URL/$pkg/${pkg}.tar.gz" | tar -xzf - -C "$share_dir" || { err "Extract failed"; exit 1; }
-        ln -sf "$share_dir/$m" "$INSTALL_DIR/$pkg"
-    else
-        curl -fsSL "$BASE_URL/$pkg/$m" -o "$INSTALL_DIR/$pkg" || { err "Download failed"; exit 1; }
-        chmod +x "$INSTALL_DIR/$pkg"
+    if [ -n "$deps" ]; then
+        install_deps "$deps" || { err "Dependency installation aborted."; exit 1; }
     fi
 
+    local bin_path="$INSTALL_DIR/$pkg"
     local conf_dir="$HOME/.config/$pkg"
-    mkdir -p "$conf_dir"
-    if ! grep -qx "$pkg" "$MANIFEST" 2>/dev/null; then
-        echo "${pkg}|${v}|$INSTALL_DIR/$pkg|$conf_dir|$(date +%F)" >> "$MANIFEST"
+    local data_dir="$HOME/.local/share/$pkg"
+
+    if [ "$t" = "archive" ]; then
+        mkdir -p "$data_dir"
+        curl -fsSL "$BASE_URL/$pkg/${pkg}.tar.gz" | tar -xzf - -C "$data_dir" || { err "Extract failed"; exit 1; }
+        ln -sf "$data_dir/$m" "$bin_path"
+    else
+        mkdir -p "$data_dir"
+        curl -fsSL "$BASE_URL/$pkg/$m" -o "$bin_path" || { err "Download failed"; exit 1; }
+        chmod +x "$bin_path"
     fi
+    mkdir -p "$conf_dir"
+
+    grep -v "^${pkg}|" "$MANIFEST" > "${MANIFEST}.tmp" 2>/dev/null || true
+    mv -f "${MANIFEST}.tmp" "$MANIFEST"
+    echo "${pkg}|${v}|${bin_path}|${conf_dir}|${data_dir}|$(date +%F)" >> "$MANIFEST"
     ok "${pkg} installed"
     [[ ":$PATH:" != *":$INSTALL_DIR:"* ]] && warn "Add $INSTALL_DIR to PATH"
 }
 
 cmd_syu() {
     [ ! -s "$MANIFEST" ] && { info "No installed packages."; return 0; }
-
     local -a upgrades=()
     local idx
     idx=$(curl -fsSL --connect-timeout 5 "$INDEX_URL") || { err "Cannot fetch INDEX"; exit 1; }
 
-    while IFS='|' read -r pkg ver bin cfg date; do
+    while IFS='|' read -r pkg ver bin cfg data date; do
         grep -qx "$pkg" <<< "$idx" || { warn "Remote index missing $pkg. Skipping."; continue; }
         local md remote_ver
         md=$(curl -fsSL "$BASE_URL/$pkg/info.md" 2>/dev/null) || continue
         remote_ver=$(parse_field_md "Version" "$md")
         remote_ver=${remote_ver:-$ver}
-
         if [ "$ver" != "$remote_ver" ]; then
             upgrades+=("${pkg}|${ver}|${remote_ver}")
         fi
     done < "$MANIFEST"
 
-    if [ ${#upgrades[@]} -eq 0 ]; then
-        info "All packages are up to date."
-        return 0
-    fi
+    if [ ${#upgrades[@]} -eq 0 ]; then info "All packages are up to date."; return 0; fi
 
     echo -e "\n${B}📦 Available Upgrades:${R}"
     for entry in "${upgrades[@]}"; do
@@ -160,22 +220,17 @@ cmd_syu() {
     done
     echo ""
 
-    printf "${B}Skip packages (comma/space separated) or 'n' to cancel:${R} "
+    printf "${B}Skip packages (comma/space) or 'n' to cancel:${R} "
     read -r skip_input
     [[ "${skip_input,,}" == "n" ]] && { info "Upgrade cancelled."; return 0; }
 
     local -a skip_list=()
-    if [ -n "$skip_input" ]; then
-        IFS=', ' read -ra skip_list <<< "$skip_input"
-    fi
+    [ -n "$skip_input" ] && IFS=', ' read -ra skip_list <<< "$skip_input"
 
-    echo ""
     for entry in "${upgrades[@]}"; do
         IFS='|' read -r p curr next <<< "$entry"
         local skip=false
-        for s in "${skip_list[@]}"; do
-            [[ "$p" == "$s" ]] && { skip=true; break; }
-        done
+        for s in "${skip_list[@]}"; do [[ "$p" == "$s" ]] && { skip=true; break; }; done
         $skip && { warn "Skipping $p"; continue; }
 
         echo -e "${B}⬇️  Updating: ${p}${R} (${curr} → ${next})"
@@ -184,19 +239,22 @@ cmd_syu() {
         t=$(parse_field_md "Type" "$md"); m=$(parse_field_md "MainFile" "$md")
         t=${t:-single}; m=${m:-$p}
 
+        local bin_path="$INSTALL_DIR/$p"
+        local conf_dir="$HOME/.config/$p"
+        local data_dir="$HOME/.local/share/$p"
+        mkdir -p "$data_dir" "$conf_dir"
+
         if [ "$t" = "archive" ]; then
-            local share_dir="$HOME/.local/share/$p"
-            mkdir -p "$share_dir"
-            curl -fsSL "$BASE_URL/$p/${p}.tar.gz" | tar -xzf - -C "$share_dir" || { err "Extract failed for $p"; continue; }
-            ln -sf "$share_dir/$m" "$INSTALL_DIR/$p"
+            curl -fsSL "$BASE_URL/$p/${p}.tar.gz" | tar -xzf - -C "$data_dir" || { err "Extract failed for $p"; continue; }
+            ln -sf "$data_dir/$m" "$bin_path"
         else
-            curl -fsSL "$BASE_URL/$p/$m" -o "$INSTALL_DIR/$p" || { err "Download failed for $p"; continue; }
-            chmod +x "$INSTALL_DIR/$p"
+            curl -fsSL "$BASE_URL/$p/$m" -o "$bin_path" || { err "Download failed for $p"; continue; }
+            chmod +x "$bin_path"
         fi
 
         grep -v "^${p}|" "$MANIFEST" > "${MANIFEST}.tmp" 2>/dev/null || true
         mv -f "${MANIFEST}.tmp" "$MANIFEST"
-        echo "${p}|${next}|$INSTALL_DIR/$p|$cfg|$(date +%F)" >> "$MANIFEST"
+        echo "${p}|${next}|${bin_path}|${conf_dir}|${data_dir}|$(date +%F)" >> "$MANIFEST"
         ok "$p updated to ${next}"
     done
     echo -e "\n${G}🎉 System upgrade complete.${R}"
@@ -204,22 +262,19 @@ cmd_syu() {
 
 cmd_remove() {
     local pkg="$1" purge="${2:-0}"
-    if ! grep -q "^${pkg}|" "$MANIFEST" 2>/dev/null; then
-        err "Not installed"
-        exit 1
-    fi
-    local line bin cfg ver
-    line=$(grep "^${pkg}|" "$MANIFEST")
-    IFS='|' read -r _ ver bin cfg _ <<< "$line"
+    local line
+    line=$(grep "^${pkg}|" "$MANIFEST" 2>/dev/null) || { err "Not installed"; exit 1; }
+    IFS='|' read -r _ ver bin cfg data _ <<< "$line"
     echo -e "\n${B}🗑️  Remove: ${pkg}${R}"
     echo -e "  Version: ${ver}\n  Binary: ${bin}"
-    [ "$purge" = "1" ] && warn "Will purge: ${cfg}"
+    [ "$purge" = "1" ] && { echo -e "  ${C}Config:${R} ${cfg}"; echo -e "  ${C}Data:${R} ${data}"; }
     confirm "${purge:+Fully }remove ${B}${pkg}${R}?" || { info "Cancelled"; return 0; }
+
     rm -f "$bin"
     ok "Binary removed."
-    if [ "$purge" = "1" ] && [ -d "$cfg" ]; then
-        rm -rf "$cfg"
-        ok "Config purged."
+    if [ "$purge" = "1" ]; then
+        [ -d "$cfg" ] && rm -rf "$cfg" && ok "Config purged."
+        [ -d "$data" ] && rm -rf "$data" && ok "Data purged."
     fi
     grep -v "^${pkg}|" "$MANIFEST" > "${MANIFEST}.tmp" 2>/dev/null || true
     mv -f "${MANIFEST}.tmp" "$MANIFEST"
@@ -229,7 +284,7 @@ cmd_remove() {
 cmd_list() {
     [ ! -s "$MANIFEST" ] && { info "No installed tools."; return 0; }
     echo -e "${B}📋 Installed:${R}"
-    while IFS='|' read -r pkg ver bin cfg date; do
+    while IFS='|' read -r pkg ver bin cfg data date; do
         echo -e "  ${G}${pkg}${R} v${ver} | Installed: ${date}"
     done < "$MANIFEST"
 }
@@ -240,7 +295,7 @@ cmd_qsearch() {
     local found
     found=$(grep -i "$q" "$MANIFEST" 2>/dev/null) || { warn "No installed packages match."; return 0; }
     echo -e "${B}🔍 Installed (match: ${q}):${R}"
-    while IFS='|' read -r pkg ver bin cfg date; do
+    while IFS='|' read -r pkg ver bin cfg data date; do
         echo -e "  ${G}${pkg}${R} v${ver}"
     done <<< "$found"
 }
