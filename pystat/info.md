@@ -4,4 +4,4 @@
 ## Size: 1,3K
 ## Type: single
 ## MainFile: pystat
-## Dependencies: sys:python3,pip pip:psutil,rich
+## Dependencies: sys:python,python-pip pip:psutil,rich
