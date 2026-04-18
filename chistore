@@ -10,7 +10,7 @@ CHISTORE_URL="${BASE_URL}/chistore"
 CHISTORE_VER_URL="${BASE_URL}/VERSION"
 INDEX_URL="${BASE_URL}/INDEX"
 
-LOCAL_VER="1.4.1"
+LOCAL_VER="1.4.2"
 XDG_DATA_HOME="${XDG_DATA_HOME:-$HOME/.local/share}"
 XDG_BIN_HOME="${XDG_BIN_HOME:-$HOME/.local/bin}"
 STATE_DIR="$XDG_DATA_HOME/chistore"
@@ -74,12 +74,12 @@ get_pkg_manager() {
 }
 
 check_sys_pkg() {
-    local pkg="$1"
-    if command -v pacman &>/dev/null; then pacman -Q "$pkg" &>/dev/null
-    elif command -v dpkg &>/dev/null; then dpkg-query -W -f='${Status}' "$pkg" 2>/dev/null | grep -q "install ok installed"
-    elif command -v rpm &>/dev/null; then rpm -q "$pkg" &>/dev/null
-    elif command -v apk &>/dev/null; then apk info -e "$pkg" &>/dev/null
-    elif command -v brew &>/dev/null; then brew list --versions "$pkg" &>/dev/null
+    local check_pkg="$1"
+    if command -v pacman &>/dev/null; then pacman -Q "$check_pkg" &>/dev/null
+    elif command -v dpkg &>/dev/null; then dpkg-query -W -f='${Status}' "$check_pkg" 2>/dev/null | grep -q "install ok installed"
+    elif command -v rpm &>/dev/null; then rpm -q "$check_pkg" &>/dev/null
+    elif command -v apk &>/dev/null; then apk info -e "$check_pkg" &>/dev/null
+    elif command -v brew &>/dev/null; then brew list --versions "$check_pkg" &>/dev/null
     else return 1; fi
 }
 
@@ -88,24 +88,24 @@ install_deps() {
     local -a sys_deps=() pip_deps=() npm_deps=()
 
     for token in $deps_str; do
-        local type="sys" pkgs="$token"
-        if [[ "$token" == *":"* ]]; then type="${token%%:*}"; pkgs="${token#*:}"; fi
-        IFS=',' read -ra pkg_list <<< "$pkgs"
-        for pkg in "${pkg_list[@]}"; do
-            [[ -z "$pkg" ]] && continue
-            case "$type" in
-                sys|pacman|apt|dnf) sys_deps+=("$pkg") ;;
-                pip|python) pip_deps+=("$pkg") ;;
-                npm|node) npm_deps+=("$pkg") ;;
-                *) sys_deps+=("$pkg") ;;
+        local dep_type="sys" dep_pkgs="$token"
+        if [[ "$token" == *":"* ]]; then dep_type="${token%%:*}"; dep_pkgs="${token#*:}"; fi
+        IFS=',' read -ra pkg_list <<< "$dep_pkgs"
+        for dep_pkg in "${pkg_list[@]}"; do
+            [[ -z "$dep_pkg" ]] && continue
+            case "$dep_type" in
+                sys|pacman|apt|dnf) sys_deps+=("$dep_pkg") ;;
+                pip|python) pip_deps+=("$dep_pkg") ;;
+                npm|node) npm_deps+=("$dep_pkg") ;;
+                *) sys_deps+=("$dep_pkg") ;;
             esac
         done
     done
 
     local -a to_install=()
-    for pkg in "${sys_deps[@]}"; do
-        if check_sys_pkg "$pkg"; then ok "Already installed: $pkg"
-        else to_install+=("$pkg"); fi
+    for sys_pkg in "${sys_deps[@]}"; do
+        if check_sys_pkg "$sys_pkg"; then ok "Already installed: $sys_pkg"
+        else to_install+=("$sys_pkg"); fi
     done
 
     if [ ${#to_install[@]} -eq 0 ] && [ ${#pip_deps[@]} -eq 0 ] && [ ${#npm_deps[@]} -eq 0 ]; then return 0; fi
@@ -139,26 +139,26 @@ install_deps() {
 }
 
 fetch_binary() {
-    local pkg="$1" main="$2" dest="$3"
-    local -a urls=("$BASE_URL/$pkg/$main")
-    [[ "$main" != *.py ]] && urls+=("$BASE_URL/$pkg/${main}.py")
+    local fb_pkg="$1" fb_main="$2" fb_dest="$3"
+    local -a urls=("$BASE_URL/$fb_pkg/$fb_main")
+    [[ "$fb_main" != *.py ]] && urls+=("$BASE_URL/$fb_pkg/${fb_main}.py")
 
-    for url in "${urls[@]}"; do
-        if curl -fsSL "$url" -o "$dest"; then return 0; fi
+    for fb_url in "${urls[@]}"; do
+        if curl -fsSL "$fb_url" -o "$fb_dest"; then return 0; fi
     done
 
     echo -e "\n${Y}⚠️  Failed URLs:${R}"
-    for url in "${urls[@]}"; do echo "  ${C}•${R} $url"; done
+    for fb_url in "${urls[@]}"; do echo "  ${C}•${R} $fb_url"; done
     return 1
 }
 
 create_python_wrapper() {
-    local bin_path="$1" data_dir="$2" main="$3"
-    cat > "$bin_path" <<WEOF
+    local wrap_bin="$1" wrap_data="$2" wrap_main="$3"
+    cat > "$wrap_bin" <<WEOF
 #!/usr/bin/env bash
-exec "$VENV_DIR/bin/python3" "$data_dir/$main" "\$@"
+exec "$VENV_DIR/bin/python3" "$wrap_data/$wrap_main" "\$@"
 WEOF
-    chmod +x "$bin_path"
+    chmod +x "$wrap_bin"
 }
 
 cmd_help() {
@@ -252,13 +252,13 @@ cmd_syu() {
     local idx
     idx=$(curl -fsSL --connect-timeout 5 "$INDEX_URL") || { err "Cannot fetch INDEX"; exit 1; }
 
-    while IFS='|' read -r pkg ver bin cfg data date; do
-        grep -qx "$pkg" <<< "$idx" || { warn "Remote index missing $pkg. Skipping."; continue; }
+    while IFS='|' read -r upg_pkg upg_ver upg_bin upg_cfg upg_data upg_date; do
+        grep -qx "$upg_pkg" <<< "$idx" || { warn "Remote index missing $upg_pkg. Skipping."; continue; }
         local md remote_ver
-        md=$(curl -fsSL "$BASE_URL/$pkg/info.md" 2>/dev/null) || continue
+        md=$(curl -fsSL "$BASE_URL/$upg_pkg/info.md" 2>/dev/null) || continue
         remote_ver=$(parse_field_md "Version" "$md")
-        remote_ver=${remote_ver:-$ver}
-        if [ "$ver" != "$remote_ver" ]; then upgrades+=("${pkg}|${ver}|${remote_ver}"); fi
+        remote_ver=${remote_ver:-$upg_ver}
+        if [ "$upg_ver" != "$remote_ver" ]; then upgrades+=("${upg_pkg}|${upg_ver}|${remote_ver}"); fi
     done < "$MANIFEST"
 
     if [ ${#upgrades[@]} -eq 0 ]; then info "All packages are up to date."; return 0; fi
