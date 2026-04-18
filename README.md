@@ -7,7 +7,7 @@ Ships with `envsnap` — a lightweight system/environment state tracker with dif
 ## Install
 
 ```bash
-curl -fsSL "https://codeberg.org/<username>/<repo>/raw/branch/main/chistore" -o ~/.local/bin/chistore
+curl -fsSL "https://codeberg.org/moyunni/chistore/raw/branch/main/chistore" -o ~/.local/bin/chistore
 chmod +x ~/.local/bin/chistore
 echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc  # or ~/.zshrc
 source ~/.bashrc
