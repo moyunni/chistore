@@ -26,85 +26,89 @@ done
 
 add_ext() { [[ "${1:-}" == *.desktop ]] && echo "$1" || echo "${1:-}.desktop"; }
 
-declare -A CMT_EN=(
-    [name]="Application name (required)"
-    [generic]="Short generic name (optional)"
-    [comment]="Longer description (optional)"
-    [exec]="Command to execute. %f=file, %u=url, %F/%U=list (required)"
-    [icon]="Absolute path or icon name from theme"
-    [terminal]="Run in terminal? true/false"
-    [type]="Application, Link, or Directory"
-    [categories]="Semicolon-separated. e.g., Utility;Development;"
-    [keywords]="Search keywords. e.g., tool;app;cli;"
-    [startup_notify]="Show startup notification? true/false"
-    [mimetype]="Handled MIME types. e.g., text/plain;application/pdf;"
-    [url]="URL for Type=Link"
-    [pref_lang]="Preferred language codes. e.g., en;ru;"
-)
-
-declare -A CMT_RU=(
-    [name]="Название приложения (обязательно)"
-    [generic]="Короткое общее название (опционально)"
-    [comment]="Подробное описание (опционально)"
-    [exec]="Команда запуска. %f=файл, %u=ссылка, %F/%U=список (обязательно)"
-    [icon]="Путь до иконки или имя из темы иконок"
-    [terminal]="Запускать в терминале? true/false"
-    [type]="Application, Link или Directory"
-    [categories]="Категории через точку с запятой. Пример: Utility;Development;"
-    [keywords]="Ключевые слова для поиска. Пример: tool;app;cli;"
-    [startup_notify]="Показывать уведомление о запуске? true/false"
-    [mimetype]="Поддерживаемые MIME-типы. Пример: text/plain;application/pdf;"
-    [url]="Ссылка для Type=Link"
-    [pref_lang]="Предпочитаемые языки. Пример: en;ru;"
-)
-
-CMT=()
-if [[ "${LANG_MODE:-}" == "ru" ]]; then CMT=("${CMT_RU[@]}"); else CMT=("${CMT_EN[@]}"); fi
+cmt() {
+    local key="${1:-}"
+    if [[ "${LANG_MODE:-}" == "ru" ]]; then
+        case "$key" in
+            name) echo "Название приложения (обязательно)" ;;
+            generic) echo "Короткое общее название (опционально)" ;;
+            comment) echo "Подробное описание (опционально)" ;;
+            exec) echo "Команда запуска. %f=файл, %u=ссылка, %F/%U=список (обязательно)" ;;
+            icon) echo "Путь до иконки или имя из темы иконок" ;;
+            terminal) echo "Запускать в терминале? true/false" ;;
+            type) echo "Application, Link или Directory" ;;
+            categories) echo "Категории через точку с запятой. Пример: Utility;Development;" ;;
+            keywords) echo "Ключевые слова для поиска. Пример: tool;app;cli;" ;;
+            startup_notify) echo "Показывать уведомление о запуске? true/false" ;;
+            mimetype) echo "Поддерживаемые MIME-типы. Пример: text/plain;application/pdf;" ;;
+            url) echo "Ссылка для Type=Link" ;;
+            pref_lang) echo "Предпочитаемые языки. Пример: en;ru;" ;;
+            *) echo "" ;;
+        esac
+    else
+        case "$key" in
+            name) echo "Application name (required)" ;;
+            generic) echo "Short generic name (optional)" ;;
+            comment) echo "Longer description (optional)" ;;
+            exec) echo "Command to execute. %f=file, %u=url, %F/%U=list (required)" ;;
+            icon) echo "Absolute path or icon name from theme" ;;
+            terminal) echo "Run in terminal? true/false" ;;
+            type) echo "Application, Link, or Directory" ;;
+            categories) echo "Semicolon-separated. e.g., Utility;Development;" ;;
+            keywords) echo "Search keywords. e.g., tool;app;cli;" ;;
+            startup_notify) echo "Show startup notification? true/false" ;;
+            mimetype) echo "Handled MIME types. e.g., text/plain;application/pdf;" ;;
+            url) echo "URL for Type=Link" ;;
+            pref_lang) echo "Preferred language codes. e.g., en;ru;" ;;
+            *) echo "" ;;
+        esac
+    fi
+}
 
 generate_template() {
     local file="${1:-}" name="${2:-}" exec_cmd="${3:-}" icon="${4:-}" term="${5:-}" comment="${6:-}"
     cat > "$file" <<EOF
 [Desktop Entry]
-# ${CMT[name]:-}
+# $(cmt name)
 Name=${name:-New Application}
 
-# ${CMT[generic]:-}
+# $(cmt generic)
 # GenericName=
 
-# ${CMT[comment]:-}
+# $(cmt comment)
 Comment=${comment:-A brief description of the application}
 
-# ${CMT[exec]:-}
+# $(cmt exec)
 Exec=${exec_cmd:-/path/to/executable %f}
 
-# ${CMT[icon]:-}
+# $(cmt icon)
 Icon=${icon:-application-x-executable}
 
-# ${CMT[terminal]:-}
+# $(cmt terminal)
 Terminal=${term:-false}
 
-# ${CMT[type]:-}
+# $(cmt type)
 Type=Application
 
 # ==========================================
 # ADVANCED / REFERENCE FIELDS (Commented)
 # ==========================================
-# ${CMT[categories]:-}
+# $(cmt categories)
 # Categories=
 
-# ${CMT[keywords]:-}
+# $(cmt keywords)
 # Keywords=
 
-# ${CMT[startup_notify]:-}
+# $(cmt startup_notify)
 # StartupNotify=false
 
-# ${CMT[mimetype]:-}
+# $(cmt mimetype)
 # MimeType=
 
-# ${CMT[url]:-} (Use if Type=Link)
+# $(cmt url) (Use if Type=Link)
 # URL=
 
-# ${CMT[pref_lang]:-}
+# $(cmt pref_lang)
 # PrefersNonDefaultGPU=false
 EOF
     echo -e "${G}[+]${R} Created: $file"
