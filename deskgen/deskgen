@@ -4,13 +4,13 @@ set -euo pipefail
 APP_DIR="$HOME/.local/share/applications"
 mkdir -p "$APP_DIR"
 
-# Defaults
+R=$'\033[0m' G=$'\033[92m' Y=$'\033[93m' C=$'\033[96m' B=$'\033[1m'
+
 CMD=""
 TARGET=""
 INTERACTIVE=false
 LANG_MODE="en"
 
-# Parse arguments
 while [[ $# -gt 0 ]]; do
     case "$1" in
         new|start) CMD="new"; shift; TARGET="${1:-}" ;;
@@ -24,10 +24,8 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-# Ensure .desktop extension
 add_ext() { [[ "$1" == *.desktop ]] && echo "$1" || echo "$1.desktop"; }
 
-# Language maps for comments
 declare -A CMT_EN=(
     [name]="Application name (required)"
     [generic]="Short generic name (optional)"
@@ -47,7 +45,7 @@ declare -A CMT_EN=(
 declare -A CMT_RU=(
     [name]="Название приложения (обязательно)"
     [generic]="Короткое общее название (опционально)"
-    [comment]="Подробное описание (опzionale)"
+    [comment]="Подробное описание (опционально)"
     [exec]="Команда запуска. %f=файл, %u=ссылка, %F/%U=список (обязательно)"
     [icon]="Путь до иконки или имя из темы иконок"
     [terminal]="Запускать в терминале? true/false"
@@ -109,7 +107,7 @@ Type=Application
 # ${CMT[pref_lang]}
 # PrefersNonDefaultGPU=false
 EOF
-    echo "[OK] Created: $file"
+    echo -e "${G}[OK]${R} Created: $file"
 }
 
 interactive_wizard() {
@@ -128,7 +126,7 @@ interactive_wizard() {
         prompt_comment="Описание (Enter для стандартного)"
     fi
 
-    echo -e "\n${C_YELLOW}🖥️  Interactive Desktop File Generator${C_RESET}\n"
+    echo -e "\n${B}🖥️  Interactive Desktop File Generator${R}\n"
     read -rp "$prompt_name: " in_name
     read -rp "$prompt_exec: " in_exec
     read -rp "$prompt_icon: " in_icon
@@ -145,9 +143,9 @@ interactive_wizard() {
 }
 
 cmd_new() {
-    [[ -z "$TARGET" ]] && { echo "[ERR] Usage: deskgen new <name>"; exit 1; }
+    [[ -z "$TARGET" ]] && { echo -e "${R}[x]${R} Usage: deskgen new <name>"; exit 1; }
     local file="$APP_DIR/$(add_ext "$TARGET")"
-    [[ -f "$file" ]] && { echo "[WARN] File exists. Use 'edit' to modify."; exit 1; }
+    [[ -f "$file" ]] && { echo -e "${Y}[!]${R} File exists. Use 'edit' to modify."; exit 1; }
     
     if $INTERACTIVE; then
         interactive_wizard "$file"
@@ -160,45 +158,45 @@ cmd_new() {
 }
 
 cmd_ls() {
-    echo -e "${C_YELLOW}📂 User Applications:${C_RESET}"
+    echo -e "${B}📂 User Applications:${R}"
     local count=0
     for f in "$APP_DIR"/*.desktop; do
-        [[ -f "$f" ]] && { echo "  $(basename "$f")"; ((count++)); }
+        [[ -f "$f" ]] && { echo -e "  ${G}$(basename "$f")${R}"; ((count++)); }
     done
     [[ $count -eq 0 ]] && echo "  (none)"
 }
 
 cmd_rm() {
-    [[ -z "$TARGET" ]] && { echo "[ERR] Usage: deskgen rm <name>"; exit 1; }
+    [[ -z "$TARGET" ]] && { echo -e "${R}[x]${R} Usage: deskgen rm <name>"; exit 1; }
     local file="$APP_DIR/$(add_ext "$TARGET")"
-    [[ ! -f "$file" ]] && { echo "[ERR] Not found: $file"; exit 1; }
+    [[ ! -f "$file" ]] && { echo -e "${R}[x]${R} Not found: $file"; exit 1; }
     read -rp "Delete $(basename "$file")? [y/N] " ans
-    [[ "${ans,,}" =~ ^y ]] && { rm -f "$file"; echo "[OK] Deleted."; command -v update-desktop-database &>/dev/null && update-desktop-database "$APP_DIR" 2>/dev/null || true; } || echo "[INFO] Cancelled."
+    [[ "${ans,,}" =~ ^y ]] && { rm -f "$file"; echo -e "${G}[+]${R} Deleted."; command -v update-desktop-database &>/dev/null && update-desktop-database "$APP_DIR" 2>/dev/null || true; } || echo -e "${C}[i]${R} Cancelled."
 }
 
 cmd_edit() {
-    [[ -z "$TARGET" ]] && { echo "[ERR] Usage: deskgen edit <name>"; exit 1; }
+    [[ -z "$TARGET" ]] && { echo -e "${R}[x]${R} Usage: deskgen edit <name>"; exit 1; }
     local file="$APP_DIR/$(add_ext "$TARGET")"
-    [[ ! -f "$file" ]] && { echo "[ERR] Not found. Create it first: deskgen new $TARGET"; exit 1; }
+    [[ ! -f "$file" ]] && { echo -e "${R}[x]${R} Not found. Create it first: deskgen new $TARGET"; exit 1; }
     ${EDITOR:-nano} "$file"
 }
 
 cmd_help() {
     cat <<EOF
-${C_YELLOW}deskgen${C_RESET} - Lightweight .desktop file manager
+${B}deskgen${R} - Lightweight .desktop file manager
 
-${C_WHITE}Usage:${C_RESET}
+${B}Usage:${R}
   deskgen new <name>       Create new .desktop file
   deskgen ls               List all user .desktop files
   deskgen rm <name>        Delete a .desktop file
   deskgen edit <name>      Open in editor (\$EDITOR or nano)
   deskgen help             Show this help
 
-${C_WHITE}Flags:${C_RESET}
+${B}Flags:${R}
   -i, --interactive        Guided creation wizard
   --lang ru|en             Comments language (default: en)
 
-${C_WHITE}Examples:${C_RESET}
+${B}Examples:${R}
   deskgen new mytool
   deskgen new mytool -i --lang ru
   deskgen edit mytool
@@ -206,7 +204,6 @@ ${C_WHITE}Examples:${C_RESET}
 EOF
 }
 
-# Route
 case "${CMD:-help}" in
     new|start) cmd_new ;;
     ls) cmd_ls ;;
