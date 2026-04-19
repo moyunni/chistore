@@ -13,13 +13,13 @@ LANG_MODE="en"
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
-        new|start) CMD="new"; shift; TARGET="${1:-}" ;;
+        new|start) CMD="new"; TARGET="${2:-}"; shift 2 2>/dev/null || shift ;;
         ls|-ls) CMD="ls"; shift ;;
-        rm|delete) CMD="rm"; shift; TARGET="${1:-}" ;;
-        edit|nano) CMD="edit"; shift; TARGET="${1:-}" ;;
+        rm|delete) CMD="rm"; TARGET="${2:-}"; shift 2 2>/dev/null || shift ;;
+        edit|nano) CMD="edit"; TARGET="${2:-}"; shift 2 2>/dev/null || shift ;;
         help|-h|--help) CMD="help"; shift ;;
         -i|--interactive) INTERACTIVE=true; shift ;;
-        --lang) LANG_MODE="$2"; shift 2 ;;
+        --lang) LANG_MODE="${2:-en}"; shift 2 2>/dev/null || shift ;;
         *) TARGET="${1:-}"; shift ;;
     esac
 done
@@ -107,7 +107,7 @@ Type=Application
 # ${CMT[pref_lang]}
 # PrefersNonDefaultGPU=false
 EOF
-    echo -e "${G}[OK]${R} Created: $file"
+    echo -e "${G}[+]${R} Created: $file"
 }
 
 interactive_wizard() {
@@ -153,7 +153,6 @@ cmd_new() {
         generate_template "$file"
     fi
     
-    # Try to update cache silently
     command -v update-desktop-database &>/dev/null && update-desktop-database "$APP_DIR" 2>/dev/null || true
 }
 
@@ -204,6 +203,7 @@ ${B}Examples:${R}
 EOF
 }
 
+# Route
 case "${CMD:-help}" in
     new|start) cmd_new ;;
     ls) cmd_ls ;;
