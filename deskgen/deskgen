@@ -13,10 +13,10 @@ LANG_MODE="en"
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
-        new|start) CMD="new"; TARGET="${2:-}"; shift 2 2>/dev/null || shift ;;
+        new|start) CMD="new"; shift; TARGET="${1:-}"; [[ -n "$TARGET" ]] && shift ;;
         ls|-ls) CMD="ls"; shift ;;
-        rm|delete) CMD="rm"; TARGET="${2:-}"; shift 2 2>/dev/null || shift ;;
-        edit|nano) CMD="edit"; TARGET="${2:-}"; shift 2 2>/dev/null || shift ;;
+        rm|delete) CMD="rm"; shift; TARGET="${1:-}"; [[ -n "$TARGET" ]] && shift ;;
+        edit|nano) CMD="edit"; shift; TARGET="${1:-}"; [[ -n "$TARGET" ]] && shift ;;
         help|-h|--help) CMD="help"; shift ;;
         -i|--interactive) INTERACTIVE=true; shift ;;
         --lang) LANG_MODE="${2:-en}"; shift 2 2>/dev/null || shift ;;
@@ -146,13 +146,11 @@ cmd_new() {
     [[ -z "$TARGET" ]] && { echo -e "${R}[x]${R} Usage: deskgen new <name>"; exit 1; }
     local file="$APP_DIR/$(add_ext "$TARGET")"
     [[ -f "$file" ]] && { echo -e "${Y}[!]${R} File exists. Use 'edit' to modify."; exit 1; }
-    
     if $INTERACTIVE; then
         interactive_wizard "$file"
     else
         generate_template "$file"
     fi
-    
     command -v update-desktop-database &>/dev/null && update-desktop-database "$APP_DIR" 2>/dev/null || true
 }
 
