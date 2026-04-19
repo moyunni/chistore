@@ -1,6 +1,10 @@
-## Name: NetDiag
+## Name: netdiag
 ## Description: Fast network diagnostics: IP, ping, DNS, port check, speed test
-## Version: 1.0.0
-## Size: 3,7K
+## Version: 1.0.1
+## Size: 3.7K
 ## Type: single
 ## MainFile: netdiag
+## Author: moyunni
+## Homepage: https://chinchilla.rnhost.ru
+## Source: https://codeberg.org/moyunni/chistore/raw/branch/main/netdiag
+## Dependencies: sys:curl,bash
