@@ -1,6 +1,6 @@
 ## Name: DeskGen
 ## Description: CLI tool to generate, manage and edit .desktop files with interactive wizard & bilingual comments
-## Version: 1.0.1
+## Version: 1.1.0
 ## Size: 7.1K
 ## Type: single
 ## MainFile: deskgen
