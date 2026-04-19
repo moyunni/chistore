@@ -203,7 +203,6 @@ ${B}Examples:${R}
 EOF
 }
 
-# Route
 case "${CMD:-help}" in
     new|start) cmd_new ;;
     ls) cmd_ls ;;
