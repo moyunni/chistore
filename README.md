@@ -4,6 +4,12 @@ Zero-dependency CLI package manager for custom terminal utilities. Written in pu
 
 Ships with `envsnap` — a lightweight system/environment state tracker with diff support.
 
+# Repository Mirrors:
+[GitHub](https://github.com/mounni/chistore)
+[GitVerse](https://gitverse.ru/moyunni/chistore)
+
+**Updates are released faster on codeberg. 10 minutes after writing the repository to codeberg, the changes will go to the mirrors.**
+
 ## Install
 
 ```bash
