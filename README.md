@@ -6,8 +6,9 @@ Ships with `envsnap` — a lightweight system/environment state tracker with dif
 
 # Repository Mirrors:
 
-[GitHub](https://github.com/mounni/chistore) and
-[GitVerse](https://gitverse.ru/moyunni/chistore)
+[GitHub](https://github.com/mounni/chistore),
+[GitVerse](https://gitverse.ru/moyunni/chistore) and
+[Codeberg](https://codeberg.org/moyunni/chistore)
 
 **Updates are released faster on codeberg. 10 minutes after writing the repository to codeberg, the changes will go to the mirrors.**
 
