@@ -1,6 +1,6 @@
 # chistore
 
-Zero-dependency CLI package manager for custom terminal utilities. Written in pure Bash. Self-updating, cross-platform, and designed to stay out of your way.
+The CLI package manager for user terminal utilities. It is written in pure Bash. It's self-updating, cross-platform, and designed not to get in your way.
 
 Ships with `envsnap` — a lightweight system/environment state tracker with diff support.
 
